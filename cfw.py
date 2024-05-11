@@ -16,7 +16,6 @@ ip_api = os.getenv('IP_API')
 bot_token = os.getenv('BOT_TOKEN')
 account_id = os.getenv('ACCOUNT_ID')
 api_token = os.getenv('CLOUDFLARE_API_TOKEN')
-admin_user_id = os.getenv('ADMIN_USER_ID')
 bot = telebot.TeleBot(bot_token)
 user_states = {}
 users_directory = 'users'
@@ -29,40 +28,19 @@ INPUT_NEW_API = 0
 
 @bot.message_handler(commands=['start'])
 def authorize(message):
-
-    if str(message.from_user.id) == str(admin_user_id):
-        print(f"Admin User ID: {admin_user_id}")
-        print(f"User ID: {message.from_user.id}")
-
         send_welcome(message)
-    else:
-        unauthorized_message = "❌ Unauthorized access! You do not have permission to use this command."
-        bot.send_message(message.chat.id, unauthorized_message)
-
-
 
 def send_welcome(message):
     menu_markup = InlineKeyboardMarkup()
     add_user_button = InlineKeyboardButton("➕ Add User", callback_data="add_user")
     user_panel_button = InlineKeyboardButton("🔰 Users Panel", callback_data="user_panel")
-    subscriptions_button = InlineKeyboardButton("📋 Subscriptions ips", callback_data="subscriptions") 
-    proxy_txt_button = InlineKeyboardButton("📁 CF Proxies", callback_data="proxy_list")
     wiki_button = InlineKeyboardButton("📚 Wiki", url="https://github.com/2ri4eUI/CFW-BOT/wiki")
-    worker_subdomain_button = InlineKeyboardButton("🌐Worker Subdomain🌐", callback_data="worker_subdomain")
-    worker_status_button = InlineKeyboardButton("📊 Workers Status", url=f"https://dash.cloudflare.com/{account_id}/workers-and-pages")
-    
-    
     menu_markup.row(add_user_button, user_panel_button)
-    menu_markup.row(subscriptions_button, proxy_txt_button)
-    menu_markup.row(worker_subdomain_button)
-    menu_markup.row(worker_status_button)
     menu_markup.row(wiki_button)
     
     
     welcome_message = """
-           　 🔰ＣＦＷ－ＢＯＴ🔰　ｖ０．０４　　
-　　　　　　２ｒｉ４ｅＵＩ
-
+           Vless BOT
     """
 
     bot.send_message(message.chat.id, welcome_message, reply_markup=menu_markup)
@@ -771,7 +749,7 @@ def handle_proxy(message):
     connection.commit()
     connection.close()
     user_states[message.from_user.id]['state'] = 'waiting_for_subdomain_or_worker_name'
-    bot.send_message(message.chat.id, "Please enter the new subdomain for your worker: \n ℹ️ example: subdomain.yourdomain.com \n\n or subdomain. ℹ️ℹ️ DO NOT enter domain that you DO NOT HAVE !")    
+    bot.send_message(message.chat.id, "Please enter the new subdomain for your worker: \n ℹ️ example: subdomain.085666.xyz \n\n or subdomain. ℹ️ℹ️ DO NOT enter domain that you DO NOT HAVE !")    
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('selected_ip:'))
 def handle_selected_ip(call):
@@ -1000,15 +978,7 @@ def replace_proxy_ip_in_file(proxy_ip, file_path):
     modified_contents = file_contents.replace("let proxyIP = 'newproxy';", f"let proxyIP = '{proxy_ip}';")
     with open(file_path, 'w') as file:
         file.write(modified_contents)
-
-# single Ctrl+C termination
-# def start_bot():
-#     bot.polling(none_stop=False)
-#     #         except KeyboardInterrupt:
-# #             print("\nBot has been stopped.")
-# #             break
-
-# non stop pull , for termination hold Ctrl+c        
+       
 def start_bot():
     while True:
         try:
