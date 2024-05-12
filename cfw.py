@@ -755,7 +755,7 @@ def handle_filename(message):
         send_welcome(message)
         return
 
-    new_file_name = {admin_user_id} + "_" + message.text.strip() + ".js"  # Mengganti admin_user_id di sini
+    new_file_name = admin_user_id + "_" + message.text.strip() + ".js"  # Mengganti admin_user_id di sini
     new_file_name_without_extension = new_file_name.replace('.js', '')
     new_subfile_name = new_file_name_without_extension + "_sub.js"
     if not os.path.exists(users_directory):
