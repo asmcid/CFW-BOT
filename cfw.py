@@ -755,7 +755,7 @@ def handle_filename(message):
         send_welcome(message)
         return
 
-    new_file_name = admin_user_id + "_" + message.text.strip() + ".js"  # Mengganti admin_user_id di sini
+    new_file_name = admin_user_id + "_" + message.text.strip() + ".js" 
     new_file_name_without_extension = new_file_name.replace('.js', '')
     new_subfile_name = new_file_name_without_extension + "_sub.js"
     if not os.path.exists(users_directory):
@@ -764,7 +764,7 @@ def handle_filename(message):
     cursor = connection.cursor()
     cursor.execute('SELECT * FROM user WHERE name = ? AND telegram_id = ?', (new_file_name_without_extension, admin_user_id))
     existing_user = cursor.fetchone()
-    cursor.execute('SELECT DISTINCT ip FROM user WHERE ip IS NOT NULL')
+    cursor.execute('SELECT DISTINCT ip FROM user WHERE ip IS NOT NULL AND telegram_id = ?', (admin_user_id))
     ips = [ip[0] for ip in cursor.fetchall()]
     connection.close()
 
@@ -788,13 +788,8 @@ def handle_filename(message):
         cursor.execute('INSERT INTO user (name, uuid, telegram_id) VALUES (?, ?, ?)', (new_file_name_without_extension, user_uuid, admin_user_id))  # Menambahkan telegram_id di sini
         connection.commit()
         connection.close()
-        
-        proxies = []
-        if os.path.isfile('proxies.txt'):
-            with open('proxies.txt', 'r') as file:
-                proxies = file.read().splitlines()
 
-        options = ips + proxies
+        options = ips
 
         keyboard = InlineKeyboardMarkup()
         for option in options:
@@ -883,7 +878,7 @@ def handle_subdomain_and_worker_name(message):
 
     connection = sqlite3.connect(db_path)
     cursor = connection.cursor()
-    cursor.execute('SELECT * FROM user WHERE subdomain = ?', (new_subdomain,))
+    cursor.execute('SELECT * FROM user WHERE subdomain = ? AND telegram_id = ?', (new_subdomain, admin_user_id))
     existing_user = cursor.fetchone()
     connection.close()
 
