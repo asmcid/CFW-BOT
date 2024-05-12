@@ -14,33 +14,127 @@ from dotenv import load_dotenv
 load_dotenv()
 ip_api = os.getenv('IP_API')
 bot_token = os.getenv('BOT_TOKEN')
-account_id = os.getenv('ACCOUNT_ID')
-api_token = os.getenv('CLOUDFLARE_API_TOKEN')
 bot = telebot.TeleBot(bot_token)
 user_states = {}
 users_directory = 'users'
 index_js_path = 'index.js'
 subs_js_path = 'subworker.js'
 db_path = 'cfw.db'
+account_id = ''
+api_token = ''
+admin_user_id = ''
 proxy_message_id = None
 proxy_state = False
 INPUT_NEW_API = 0
 
 @bot.message_handler(commands=['start'])
 def authorize(message):
-        send_welcome(message)
+    user_id = str(message.from_user.id)
+    global api_token, account_id
+    # Connect to SQLite database
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+
+    # Check if user exists in the database
+    cursor.execute("SELECT telegram_id FROM users WHERE telegram_id=?", (user_id,))
+    user_exists = cursor.fetchone()
+
+    if user_exists:
+        print(f"User ID: {user_id}")
+        # Get api_token and account_id from the database
+        user_data = get_api_token_and_account_id(user_id)
+        if user_data:
+            admin_user_id, api_token, account_id = user_data
+            print(f" Telegram ID: {admin_user_id}, API Token: {api_token}, Account ID: {account_id}")
+            # Call send_welcome with api_token and account_id
+            send_welcome(message)
+        else:
+            bot.send_message(message.chat.id, "Failed to retrieve user data.")
+    else:
+        send_register(message)
+
+    # Close database connection
+    conn.close()
+
+# Fungsi untuk mengambil api_token dan account_id dari database
+def get_api_token_and_account_id(user_id):
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+
+    # Ambil api_token dan account_id dari tabel users
+    cursor.execute("SELECT telegram_id, api_token, account_id FROM users WHERE telegram_id=?", (user_id,))
+    user_data = cursor.fetchone()
+
+    # Tutup koneksi dan kembalikan nilai-nilai
+    conn.close()
+    return user_data
+
+
+
+def send_register(message):
+    registration_markup = InlineKeyboardMarkup()
+    register_user = InlineKeyboardButton("Register", callback_data="register_user")
+    registration_markup.row(register_user)
+    
+    register_message = "You are not registered yet. Please click on the 'Register' button to proceed."
+
+    bot.send_message(message.chat.id, register_message, reply_markup=registration_markup)
+
+def register_account_id(message):
+    bot.send_message(message.chat.id, "Please enter your Account ID:")
+    bot.register_next_step_handler(message, process_account_id)
+
+def process_account_id(message):
+    account_id = message.text.strip()
+    bot.send_message(message.chat.id, "Please enter your API Token:")
+    bot.register_next_step_handler(message, process_api_token, account_id)
+
+def process_api_token(message, account_id):
+    api_token = message.text.strip()
+    user_id = str(message.from_user.id)
+
+    # Connect to SQLite database
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+
+    # Insert new user into the database with account_id and api_token
+    cursor.execute("INSERT INTO users (telegram_id, account_id, api_token) VALUES (?, ?, ?)", (user_id, account_id, api_token))
+    conn.commit()
+
+    # Inform user about successful registration
+    bot.send_message(message.chat.id, "Registration successful! You can now access the bot's features.")
+
+    # Close database connection
+    conn.close()
+
+    # Send welcome message
+    send_welcome(message)
+
+@bot.callback_query_handler(func=lambda call: call.data == "register_user")
+def register_user_callback(call):
+    register_account_id(call.message)
+
+
 
 def send_welcome(message):
     menu_markup = InlineKeyboardMarkup()
     add_user_button = InlineKeyboardButton("➕ Add User", callback_data="add_user")
     user_panel_button = InlineKeyboardButton("🔰 Users Panel", callback_data="user_panel")
-    wiki_button = InlineKeyboardButton("📚 Wiki", url="https://github.com/2ri4eUI/CFW-BOT/wiki")
+    subscriptions_button = InlineKeyboardButton("📋 Subscriptions ips", callback_data="subscriptions") 
+    proxy_txt_button = InlineKeyboardButton("📁 CF Proxies", callback_data="proxy_list")
+    worker_subdomain_button = InlineKeyboardButton("🌐Worker Subdomain🌐", callback_data="worker_subdomain")
+    worker_status_button = InlineKeyboardButton("📊 Workers Status", url=f"https://dash.cloudflare.com/{account_id}/workers-and-pages")
+    
+    
     menu_markup.row(add_user_button, user_panel_button)
-    menu_markup.row(wiki_button)
+    # menu_markup.row(subscriptions_button, proxy_txt_button)
+    menu_markup.row(worker_subdomain_button)
+    menu_markup.row(worker_status_button)
     
     
     welcome_message = """
-           Vless BOT
+           　 Vless Cloudflare Bot by Syihab 　
+
     """
 
     bot.send_message(message.chat.id, welcome_message, reply_markup=menu_markup)
@@ -174,7 +268,7 @@ def user_panel_cfw(call):
     connection = sqlite3.connect(db_path)
     cursor = connection.cursor()
 
-    cursor.execute('SELECT name FROM user')
+    cursor.execute('SELECT name FROM user WHERE telegram_id = ?', (admin_user_id,))  # Menambahkan kondisi telegram_id
     rows = cursor.fetchall()
 
     keyboard = InlineKeyboardMarkup()
@@ -203,11 +297,11 @@ def user_info_callback(call):
     connection = sqlite3.connect(db_path)
     cursor = connection.cursor()
 
-    cursor.execute('SELECT * FROM user WHERE name = ?', (user_name,))
+    cursor.execute('SELECT * FROM user WHERE name = ? AND telegram_id = ?', (user_name,admin_user_id))
     row = cursor.fetchone()
 
     if row and None in row:
-        cursor.execute('DELETE FROM user WHERE name = ?', (user_name,))
+        cursor.execute('DELETE FROM user WHERE name = ? AND telegram_id = ?', (user_name, admin_user_id))
         connection.commit()
         keyboard = InlineKeyboardMarkup()
         return_button = InlineKeyboardButton("🔙 Return", callback_data="user_panel")
@@ -236,14 +330,14 @@ def user_info_callback(call):
         message_text += f"📋SingBox: <code>{singbox_link}</code>"
 
         keyboard = InlineKeyboardMarkup()
-        delete_button = InlineKeyboardButton("🗑️ Delete", callback_data=f"delete:{user_name}")
-        qr_button = InlineKeyboardButton("🔲 QR", callback_data=f"qr:{user_name}")
-        redeploy_button = InlineKeyboardButton("🔄 Redeploy", callback_data=f"redeploy:{user_name}")
-        change_proxy_button = InlineKeyboardButton("🆕 New Proxy", callback_data=f"newproxy:{user_name}")
+        # delete_button = InlineKeyboardButton("🗑️ Delete", callback_data=f"delete:{user_name}")
+        # qr_button = InlineKeyboardButton("🔲 QR", callback_data=f"qr:{user_name}")
+        # redeploy_button = InlineKeyboardButton("🔄 Redeploy", callback_data=f"redeploy:{user_name}")
+        # change_proxy_button = InlineKeyboardButton("🆕 New Proxy", callback_data=f"newproxy:{user_name}")
         worker_status_button = InlineKeyboardButton("🔧 Worker Status", url=f"https://dash.cloudflare.com/{account_id}/workers/services/view/{user_name}/production")
         return_button = InlineKeyboardButton("🔙 Return", callback_data="user_panel")
-        keyboard.add(delete_button, qr_button)
-        keyboard.add(change_proxy_button, redeploy_button)
+        # keyboard.add(delete_button, qr_button)
+        # keyboard.add(change_proxy_button, redeploy_button)
         keyboard.add(worker_status_button)
         keyboard.add(return_button)
 
@@ -661,14 +755,14 @@ def handle_filename(message):
         send_welcome(message)
         return
 
-    new_file_name = message.text.strip() + ".js"
+    new_file_name = {admin_user_id} + "_" + message.text.strip() + ".js"  # Mengganti admin_user_id di sini
     new_file_name_without_extension = new_file_name.replace('.js', '')
     new_subfile_name = new_file_name_without_extension + "_sub.js"
     if not os.path.exists(users_directory):
         os.makedirs(users_directory)
     connection = sqlite3.connect(db_path)
     cursor = connection.cursor()
-    cursor.execute('SELECT * FROM user WHERE name = ?', (new_file_name_without_extension,))
+    cursor.execute('SELECT * FROM user WHERE name = ? AND telegram_id = ?', (new_file_name_without_extension, admin_user_id))
     existing_user = cursor.fetchone()
     cursor.execute('SELECT DISTINCT ip FROM user WHERE ip IS NOT NULL')
     ips = [ip[0] for ip in cursor.fetchall()]
@@ -691,7 +785,7 @@ def handle_filename(message):
         bot.send_message(message.chat.id, f"uuid of new user ➡️ {user_uuid}")
         connection = sqlite3.connect(db_path)
         cursor = connection.cursor()
-        cursor.execute('INSERT INTO user (name, uuid) VALUES (?, ?)', (new_file_name_without_extension, user_uuid))
+        cursor.execute('INSERT INTO user (name, uuid, telegram_id) VALUES (?, ?, ?)', (new_file_name_without_extension, user_uuid, admin_user_id))  # Menambahkan telegram_id di sini
         connection.commit()
         connection.close()
         
@@ -714,6 +808,7 @@ def handle_filename(message):
 
         user_states[message.from_user.id] = {'state': 'waiting_for_proxy', 'file_name':  new_file_name, 'uuid': user_uuid}
         return
+
 
 @bot.message_handler(func=lambda message: user_states.get(message.from_user.id, {}).get('state') == 'waiting_for_proxy')
 def handle_proxy(message):
@@ -745,11 +840,11 @@ def handle_proxy(message):
     new_file_name_without_extension = new_file_name.replace('.js', '')
     connection = sqlite3.connect(db_path)
     cursor = connection.cursor()
-    cursor.execute('UPDATE user SET ip = ? WHERE name = ?', (new_proxy_ip, new_file_name_without_extension))
+    cursor.execute('UPDATE user SET ip = ? WHERE name = ? AND telegram_id = ?', (new_proxy_ip, new_file_name_without_extension, admin_user_id))
     connection.commit()
     connection.close()
     user_states[message.from_user.id]['state'] = 'waiting_for_subdomain_or_worker_name'
-    bot.send_message(message.chat.id, "Please enter the new subdomain for your worker: \n ℹ️ example: subdomain.085666.xyz \n\n or subdomain. ℹ️ℹ️ DO NOT enter domain that you DO NOT HAVE !")    
+    bot.send_message(message.chat.id, "Please enter the new subdomain for your worker: \n ℹ️ example: subdomain.yourdomain.com \n\n or subdomain. ℹ️ℹ️ DO NOT enter domain that you DO NOT HAVE !")    
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('selected_ip:'))
 def handle_selected_ip(call):
@@ -768,7 +863,7 @@ def handle_selected_ip(call):
     new_file_name_without_extension = new_file_name.replace('.js', '')
     connection = sqlite3.connect(db_path)
     cursor = connection.cursor()
-    cursor.execute('UPDATE user SET ip = ? WHERE name = ?', (selected_ip, new_file_name_without_extension))
+    cursor.execute('UPDATE user SET ip = ? WHERE name = ? AND telegram_id = ?', (selected_ip, new_file_name_without_extension, admin_user_id))
     connection.commit()
     connection.close()
     current_subdomains = get_subdomains()
@@ -828,7 +923,7 @@ def handle_subdomain_and_worker_name(message):
         
         connection = sqlite3.connect(db_path)
         cursor = connection.cursor()
-        cursor.execute('UPDATE user SET subdomain = ? WHERE name = ?', (new_subdomain, new_file_name_without_extension))
+        cursor.execute('UPDATE user SET subdomain = ? WHERE name = ? AND telegram_id = ?', (new_subdomain, new_file_name_without_extension, admin_user_id))
         connection.commit()
         connection.close()
         
@@ -978,7 +1073,15 @@ def replace_proxy_ip_in_file(proxy_ip, file_path):
     modified_contents = file_contents.replace("let proxyIP = 'newproxy';", f"let proxyIP = '{proxy_ip}';")
     with open(file_path, 'w') as file:
         file.write(modified_contents)
-       
+
+# single Ctrl+C termination
+# def start_bot():
+#     bot.polling(none_stop=False)
+#     #         except KeyboardInterrupt:
+# #             print("\nBot has been stopped.")
+# #             break
+
+# non stop pull , for termination hold Ctrl+c        
 def start_bot():
     while True:
         try:
